@@ -39,16 +39,20 @@ from xgboost import XGBClassifier
 from sklearn.ensemble import ExtraTreesClassifier
 import datetime
 from dateutil.relativedelta import relativedelta
+import os
 
+# create directory paths for opening files
+curr_path = os.path.dirname(os.path.realpath(__file__))
+dataset_path = os.path.join(curr_path, "datasets/")
 
 
 # Turn off pandas chained assignment warning
 pd.options.mode.chained_assignment = None  # default='warn'
 
 # Reading plidata
-plidata = pd.read_csv('/home/linadmin/FirePred/datasets/pli.csv',encoding = 'utf-8',dtype={'STREET_NUM':'str','STREET_NAME':'str'}, low_memory=False)
+plidata = pd.read_csv(os.path.join(dataset_path, "pli.csv"),encoding = 'utf-8',dtype={'STREET_NUM':'str','STREET_NAME':'str'}, low_memory=False)
 #Reading city of Pittsburgh dataset
-pittdata = pd.read_csv('/home/linadmin/FirePred/datasets/pittdata.csv',dtype={'PROPERTYADDRESS':'str','PROPERTYHOUSENUM':'str','CLASSDESC':'str'}, low_memory=False)
+pittdata = pd.read_csv(os.path.join(dataset_path, "pittdata.csv"),dtype={'PROPERTYADDRESS':'str','PROPERTYHOUSENUM':'str','CLASSDESC':'str'}, low_memory=False)
 
 
 #removing all properties outside Pittsburgh, Wilkinsburg, and Ingram
@@ -170,7 +174,7 @@ pcafinal = reduce(lambda left,right: pd.merge(left,right,on= [ "PROPERTYHOUSENUM
 plipca1 = pd.merge(pcafinal, newpli, how = 'left', left_on =[ "PROPERTYHOUSENUM", "PROPERTYADDRESS"], right_on = [ "PROPERTYHOUSENUM", "PROPERTYADDRESS"] )
 
 #loading fire incidents csvs
-fire_pre14 = pd.read_csv('/home/linadmin/FirePred/datasets/Fire_Incidents_Pre14.csv',encoding = 'latin-1',dtype={'street':'str','number':'str'}, low_memory=False)
+fire_pre14 = pd.read_csv(os.path.join(dataset_path, "Fire_Incidents_Pre14.csv"),encoding = 'latin-1',dtype={'street':'str','number':'str'}, low_memory=False)
 
 #cleaning columns of fire_pre14
 fire_pre14['full.code'] = fire_pre14['full.code'].str.replace('  -',' -')
@@ -181,7 +185,7 @@ fire_pre14['st_type'] = fire_pre14['st_type'].str.replace('AV','AVE')
 fire_pre14['street'] = fire_pre14['street'].str.strip() +' ' +fire_pre14['st_type'].str.strip()
 
 #reading the fire_historicalfile
-fire_new = pd.read_csv('/home/linadmin/FirePred/datasets/Fire_Incidents_New.csv',encoding = 'utf-8',dtype={'street':'str','number':'str'}, low_memory=False)
+fire_new = pd.read_csv(os.path.join(dataset_path, "Fire_Incidents_New.csv"),encoding = 'utf-8',dtype={'street':'str','number':'str'}, low_memory=False)
 
 #deleting columns not required
 del fire_new['alm_dttm']
@@ -332,14 +336,6 @@ pcafire_nopli['full.code'][pcafire_nopli['fire'] == 'fire'] = None
 
 #combined_df is the final file
 combined_df  = pcafire_nopli.append(pcafire2, ignore_index=True)
-
-
-
-
-#Reading the cleaned dataset
-#combined_df = pd.read_csv('Final_Combined_Df.csv')
-
-
 
 #Removing vacant commerical land
 combined_df = combined_df[combined_df.USEDESC!= 'VACANT COMMERCIAL LAND']
@@ -504,8 +500,7 @@ print precis
 
 
 ### Write model performance to log file:
-
-log_path = "/home/linadmin/FirePred/log/"
+log_path = os.path.join(curr_path, "log/")
 
 with open('{0}ModelPerformance_{1}.txt'.format(log_path, datetime.datetime.now()), 'a') as log_file:
     log_file.write("Confusion Matrix: \n \n")
@@ -537,7 +532,7 @@ cols = {"Address": addresses, "Fire":pred,"RiskScore":risk,"state_desc":state_de
 Results = pd.DataFrame(cols)
 
 #Writing results to the updating Results.csv
-Results.to_csv('/home/linadmin/FirePred/datasets/Results.csv')
+Results.to_csv(os.path.join(dataset_path, "Results.csv"))
 
 
 # Writing results to a log file
@@ -556,7 +551,8 @@ plt.ylabel('True Positive Rate')
 plt.xlabel('False Positive Rate')
 #plt.show()
 
-png_path = "/home/linadmin/FirePred/images/"
+
+png_path = os.path.join(curr_path, "images/")
 roc_png = "{0}ROC_{1}.png".format(png_path, datetime.datetime.now())
 plt.savefig(roc_png, dpi=150)
 plt.clf()   # Clear figure

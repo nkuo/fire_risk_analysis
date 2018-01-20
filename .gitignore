@@ -1,8 +1,5 @@
-
-datasets/properties.csv
-datasets/pli.csv
-datasets/pittdata.csv
-datasets/parcels.csv
+datasets/
+images/
+log/
+.idea/
 *.csv
-datasets/.DS_Store
-datasets/._.DS_Store
