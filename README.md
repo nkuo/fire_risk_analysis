@@ -1,5 +1,5 @@
-# fire_risk_analysis
-Modeling structure fire risk to inform fire inspections
+# SUDS Fire Commercial
+This project is to further previous work on Fire Risk Modeling for Metro 21 and the Pittsburgh fire department.
 
 ## How to set up
 
