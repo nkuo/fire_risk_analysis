@@ -39,6 +39,7 @@ from xgboost import XGBClassifier
 from sklearn.ensemble import ExtraTreesClassifier
 import datetime
 from dateutil.relativedelta import relativedelta
+import os
 
 
 
@@ -46,12 +47,19 @@ from dateutil.relativedelta import relativedelta
 pd.options.mode.chained_assignment = None  # default='warn'
 
 # =============================#1: CLEAN PLI & PITT DATA========================
+# create directory paths for opening files
+curr_path = os.path.dirname(os.path.realpath(__file__))
+dataset_path = os.path.join(curr_path, "datasets/")
+
 # Reading plidata
-plidata = pd.read_csv('/home/linadmin/FirePred/datasets/pli.csv',
-                      encoding = 'utf-8',dtype={'STREET_NUM':'str','STREET_NAME':'str'}, low_memory=False)
+plidata = pd.read_csv(os.path.join(dataset_path, "pli.csv"),encoding = 'utf-8',dtype={'STREET_NUM':'str','STREET_NAME':'str'}, low_memory=False)
 #Reading city of Pittsburgh dataset
-pittdata = pd.read_csv('/home/linadmin/FirePred/datasets/pittdata.csv',
-                       dtype={'PROPERTYADDRESS':'str','PROPERTYHOUSENUM':'str','CLASSDESC':'str'}, low_memory=False)
+pittdata = pd.read_csv(os.path.join(dataset_path, "pittdata.csv"),dtype={'PROPERTYADDRESS':'str','PROPERTYHOUSENUM':'str','CLASSDESC':'str'}, low_memory=False)
+
+
+#removing all properties outside Pittsburgh, Wilkinsburg, and Ingram
+#pittdata = pittdata[(pittdata.PROPERTYCITY == 'Pittsburgh') & (pittdata.PROPERTYCITY == 'Wilkinsburg') & (pittdata.PROPERTYCITY == 'Ingram')]
+pittdata = pittdata[(pittdata.PROPERTYCITY == 'PITTSBURGH')]# & (pittdata.PROPERTYCITY == 'WILKINSBURG') & (pittdata.PROPERTYCITY == 'INGRAM')]
 
 #removing extra whitespaces
 plidata['STREET_NAME'] = plidata['STREET_NAME'].str.strip()
@@ -62,14 +70,15 @@ pittdata = pittdata[pittdata.CLASSDESC!='RESIDENTIAL']
 pittdata = pittdata[pittdata.PROPERTYHOUSENUM!= '0']
 pittdata = pittdata[pittdata.PROPERTYADDRESS!= '']
 
+
+
 #dropping columns with less than 15% data
 pittdata = pittdata.dropna(thresh=4000, axis=1)
 pittdata = pittdata.rename(columns={pittdata.columns[0]:'PARID'})
 pittdata = pittdata.drop_duplicates()
 
 #merging pli with city of pitt
-plipca = pd.merge(pittdata, plidata[['PARCEL','INSPECTION_DATE','INSPECTION_RESULT','VIOLATION']], how = 'left',
-                  left_on =['PARID'], right_on = ['PARCEL'] )
+plipca = pd.merge(pittdata, plidata[['PARCEL','INSPECTION_DATE','INSPECTION_RESULT','VIOLATION']], how = 'left', left_on =['PARID'], right_on = ['PARCEL'] )
 plipca = plipca.drop_duplicates()
 
 
@@ -160,17 +169,17 @@ result8 = result8.drop_duplicates(subset=[ "PROPERTYHOUSENUM", "PROPERTYADDRESS"
 del result8['count']
 
 dfs = [result1,result2,result3,result4,result6,result7,result8,numerical]
+
 pcafinal = reduce(lambda left,right: pd.merge(left,right,on= [ "PROPERTYHOUSENUM", "PROPERTYADDRESS"] ), dfs)
+
 plipca1 = pd.merge(pcafinal, newpli, how = 'left', left_on =[ "PROPERTYHOUSENUM", "PROPERTYADDRESS"], right_on = [ "PROPERTYHOUSENUM", "PROPERTYADDRESS"] )
 # ============#1 DONE, ^this is the cleaned dataframe of pli + pitt ============
 
 
 # =====================#2 CLEAN FIRE INCIDENT DATA====================
 #loading fire incidents csvs
-fire_pre14 = pd.read_csv('/home/linadmin/FirePred/datasets/Fire_Incidents_Pre14.csv',encoding = 'latin-1',
-                         dtype={'street':'str','number':'str'}, low_memory=False)
-fire_new = pd.read_csv('/home/linadmin/FirePred/datasets/Fire_Incidents_New.csv',encoding = 'utf-8',
-                       dtype={'street':'str','number':'str'}, low_memory=False)
+fire_pre14 = pd.read_csv(os.path.join(dataset_path, "Fire_Incidents_Pre14.csv"),encoding = 'latin-1',dtype={'street':'str','number':'str'}, low_memory=False)
+fire_new = pd.read_csv(os.path.join(dataset_path, "Fire_Incidents_New.csv"),encoding = 'utf-8',dtype={'street':'str','number':'str'}, low_memory=False)
 
 #cleaning columns of fire_pre14
 fire_pre14['full.code'] = fire_pre14['full.code'].str.replace('  -',' -')
@@ -192,7 +201,7 @@ post14_drop = ['alm_dttm','arv_dttm','XCOORD','YCOORD','alarms','inci_type','CAL
 for col in post14_drop:
     del fire_new[col]
 
-# combine data from two csvs together
+#joining both the fire incidents file together
 fire_new = fire_new.append(fire_pre14, ignore_index=True)
 
 # removing events that are not fire related
@@ -278,9 +287,7 @@ pcafire1 = pcafire1[pd.notnull(pcafire1.INSPECTION_DATE)]
 pcafire2 = pcafire1[(pcafire1.violation_year == pcafire1.fire_year)]
 
 #joining all rows with no pli violations
-fire_nopli = pd.concat([fire_new, pcafire2[['number','street','CALL_CREATED_DATE','full.code','response_time',
-                                            'fire_year']], pcafire2[['number','street','CALL_CREATED_DATE','full.code',
-                                                                     'response_time','fire_year']]]).drop_duplicates(keep=False)
+fire_nopli = pd.concat([fire_new, pcafire2[['number','street','CALL_CREATED_DATE','full.code','response_time','fire_year']], pcafire2[['number','street','CALL_CREATED_DATE','full.code','response_time','fire_year']]]).drop_duplicates(keep=False)
 pcafire_nopli = pd.merge(pcafinal, fire_nopli, how = 'left', left_on =['PROPERTYADDRESS','PROPERTYHOUSENUM'],
         right_on = ['street','number'])
 
@@ -291,16 +298,12 @@ pcafire_nopli['full.code'][pcafire_nopli['fire'] == 'fire'] = None
 
 #combined_df is the final file
 combined_df  = pcafire_nopli.append(pcafire2, ignore_index=True)
-#combined_df.to_csv('datasets/Final_Combined_Df.csv')
 # ================= #3 DONE, ^this is final cleaned dataframe ===================
 
 
 # =========================== #4 PREPARE DATA =============================
 # this part splits the data into training and testing, then coverts the log
 # of incident/inspection violation data and convert it to building addresses
-
-#Reading the cleaned dataset
-#combined_df = pd.read_csv('Final_Combined_Df.csv')
 
 #Removing vacant commerical land
 combined_df = combined_df[combined_df.USEDESC!= 'VACANT COMMERCIAL LAND']
@@ -314,8 +317,7 @@ ohe8 = pd.get_dummies(combined_df['full.code'])
 ohe10 = pd.get_dummies(combined_df['INSPECTION_RESULT'])
 
 #concatenating the features together
-combined_df1 = pd.concat([combined_df[['PROPERTYADDRESS','PROPERTYHOUSENUM','CALL_CREATED_DATE','fire','fire_year']],
-                          ohe8,ohe9,ohe10], axis=1)
+combined_df1 = pd.concat([combined_df[['PROPERTYADDRESS','PROPERTYHOUSENUM','CALL_CREATED_DATE','fire','fire_year']],ohe8,ohe9,ohe10], axis=1)
 
 
 #PREPARING THE TESTING DATA (final 6 months of data)
@@ -323,93 +325,71 @@ cutoff = datetime.datetime.now() - relativedelta(months=6)
 cutoffdate = cutoff.strftime("%m/%d/%Y")
 
 
+def incidentsToBuildings (frame):
+    frame2 = frame.groupby(
+        ["PROPERTYHOUSENUM", "PROPERTYADDRESS", 'CALL_CREATED_DATE', 'fire_year']).sum().reset_index()
+    del frame['CALL_CREATED_DATE']
+    del frame['fire_year']
+    frame2.loc[frame2.fire != 0, 'fire'] = 1
+
+    nofire2017 = pd.concat(
+        [pcafinal[["PROPERTYHOUSENUM", "PROPERTYADDRESS"]], frame2[["PROPERTYHOUSENUM", "PROPERTYADDRESS"]],
+         frame2[["PROPERTYHOUSENUM", "PROPERTYADDRESS"]]]).drop_duplicates(keep=False)
+
+    frame2 = frame2.append(nofire2017, ignore_index=True)
+    frame2 = frame2.fillna(0)
+
+    frame3 = pd.merge(frame2, pcafinal, on=["PROPERTYHOUSENUM", "PROPERTYADDRESS"], how='left')
+    # frame3.fire.value_counts()
+
+    # One hot encoding the features for the test set
+    ohe1 = pd.get_dummies(frame3['CLASSDESC'])
+    ohe2 = pd.get_dummies(frame3['SCHOOLDESC'])
+    ohe3 = pd.get_dummies(frame3['OWNERDESC'])
+    ohe4 = pd.get_dummies(frame3['MUNIDESC'])
+    ohe5 = pd.get_dummies(frame3['NEIGHCODE'])
+    ohe6 = pd.get_dummies(frame3['TAXDESC'])
+    ohe7 = pd.get_dummies(frame3['USEDESC'])
+
+    state_desc = frame3['CLASSDESC']
+    school_desc = frame3['SCHOOLDESC']
+    owner_desc = frame3['OWNERDESC']
+    muni_desc = frame3['MUNIDESC']
+    neigh_desc = frame3['NEIGHCODE']
+    tax_desc = frame3['TAXDESC']
+    use_desc = frame3['USEDESC']
+    address = frame3['PROPERTYADDRESS']
+    housenum = frame3['PROPERTYHOUSENUM']
+
+    # Deleting features not required anymore or already one hot encoded for the model
+    ohe_del = ['CALL_CREATED_DATE', 'CLASSDESC', 'SCHOOLDESC', 'OWNERDESC', 'MUNIDESC',
+               'NEIGHCODE', 'TAXDESC', 'USEDESC', 'fire_year', 'PROPERTYADDRESS', 'PROPERTYHOUSENUM']
+    for col in ohe_del:
+        del frame3[col]
+
+    # Concatenating everything back together
+    encoded_dataframe = pd.concat([frame3, ohe1, ohe2, ohe3, ohe4, ohe5, ohe6, ohe7], axis=1)
+    return encoded_dataframe
+
+
+#Prepping test data
 testdata = combined_df1[combined_df1.CALL_CREATED_DATE > cutoffdate]
-testdata2 = testdata.groupby( [ "PROPERTYHOUSENUM", "PROPERTYADDRESS",'CALL_CREATED_DATE','fire_year'] ).sum().reset_index()
-del testdata['CALL_CREATED_DATE']
-del testdata['fire_year']
-#testdata2 = testdata.groupby( [ "PROPERTYHOUSENUM", "PROPERTYADDRESS"] ).sum().reset_index() #,'CALL_CREATED_DATE','fire_year'
-testdata2.loc[testdata2.fire != 0, 'fire'] = 1
+encoded_testdata = incidentsToBuildings(testdata)
 
-nofire2017 = pd.concat([pcafinal[["PROPERTYHOUSENUM","PROPERTYADDRESS"]], testdata2[["PROPERTYHOUSENUM","PROPERTYADDRESS"]],testdata2[["PROPERTYHOUSENUM","PROPERTYADDRESS"]]]).drop_duplicates(keep=False)
+#Prepping train data, everything till final 6-month period is training data
+traindata = combined_df1[combined_df1.CALL_CREATED_DATE <= cutoffdate]
+encoded_traindata = incidentsToBuildings(traindata)
 
-testdata2 = testdata2.append(nofire2017, ignore_index=True)
-testdata2 = testdata2.fillna(0)
+def encodedToXY(encoded):
+    #converting to array and reshaping the data to prep for model
+    fireVar = encoded['fire']
+    del encoded['fire']
+    X = np.array(encoded)
+    Y = np.reshape(fireVar.values,[fireVar.shape[0],])
+    return X,Y
 
-test_data = pd.merge(testdata2,pcafinal, on = ["PROPERTYHOUSENUM", "PROPERTYADDRESS"], how = 'left')
-#test_data.fire.value_counts()
-
-#One hot encoding the features for the test set
-ohe1 = pd.get_dummies(test_data['CLASSDESC'])
-ohe2 = pd.get_dummies(test_data['SCHOOLDESC'])
-ohe3 = pd.get_dummies(test_data['OWNERDESC'])
-ohe4 = pd.get_dummies(test_data['MUNIDESC'])
-ohe5 = pd.get_dummies(test_data['NEIGHCODE'])
-ohe6 = pd.get_dummies(test_data['TAXDESC'])
-ohe7 = pd.get_dummies(test_data['USEDESC'])
-
-state_desc = test_data['CLASSDESC']
-school_desc= test_data['SCHOOLDESC']
-owner_desc= test_data['OWNERDESC']
-muni_desc= test_data['MUNIDESC']
-neigh_desc= test_data['NEIGHCODE']
-tax_desc= test_data['TAXDESC']
-use_desc= test_data['USEDESC']
-address= test_data['PROPERTYADDRESS']
-housenum= test_data['PROPERTYHOUSENUM']
-
-#Deleting features not required anymore or already one hot encoded for the model
-ohe_del = ['CALL_CREATED_DATE','CLASSDESC','SCHOOLDESC','OWNERDESC','MUNIDESC',
-           'NEIGHCODE','TAXDESC','USEDESC','fire_year','PROPERTYADDRESS','PROPERTYHOUSENUM']
-for col in ohe_del:
-    del test_data[col]
-#Concatenating everything back together
-encoded_testdata = pd.concat([test_data,ohe1,ohe2,ohe3,ohe4,ohe5,ohe6,ohe7], axis=1)
-
-#PREPARING THE TRAINING DATA
-
-#Everything till final 6-month period is training data
-traindata1 = combined_df1[combined_df1.CALL_CREATED_DATE <= cutoffdate]
-
-#Combining multiple instances of an address together
-traindata = traindata1.groupby( [ "PROPERTYHOUSENUM", "PROPERTYADDRESS",'CALL_CREATED_DATE','fire_year'] ).sum().reset_index()
-#Relabeling them
-traindata.loc[traindata.fire != 0, 'fire'] = 1
-
-#concatenating non fire, non pca and fire instances together
-nofire_train = pd.concat([pcafinal[["PROPERTYHOUSENUM","PROPERTYADDRESS"]], traindata[["PROPERTYHOUSENUM","PROPERTYADDRESS"]],traindata[["PROPERTYHOUSENUM","PROPERTYADDRESS"]]]).drop_duplicates(keep=False)
-traindata = traindata.append(nofire2017, ignore_index=True)
-traindata = traindata.fillna(0)
-train_data = pd.merge(traindata,pcafinal, on = ["PROPERTYHOUSENUM", "PROPERTYADDRESS"], how = 'left')
-#train_data.fire.value_counts()
-
-#creating on hot encoded features for the categorical values
-ohe1 = pd.get_dummies(train_data['CLASSDESC'])
-ohe2 = pd.get_dummies(train_data['SCHOOLDESC'])
-ohe3 = pd.get_dummies(train_data['OWNERDESC'])
-ohe4 = pd.get_dummies(train_data['MUNIDESC'])
-ohe5 = pd.get_dummies(train_data['NEIGHCODE'])
-ohe6 = pd.get_dummies(train_data['TAXDESC'])
-ohe7 = pd.get_dummies(train_data['USEDESC'])
-
-#deleting the categories
-for col in ohe_del:
-    del train_data[col]
-
-#concatenating all the created features together
-encoded_traindata = pd.concat([train_data,ohe1,ohe2,ohe3,ohe4,ohe5,ohe6,ohe7], axis=1)
-
-#converting to array and reshaping the data to prep for model
-fireVarTrain = encoded_traindata['fire']
-del encoded_traindata['fire']
-X_train = np.array(encoded_traindata)
-y_train = np.reshape(fireVarTrain.values,[fireVarTrain.shape[0],])
-
-#converting to array and reshaping the data to prep for model
-fireVarTest = encoded_testdata['fire']
-del encoded_testdata['fire']
-X_test = np.array(encoded_testdata)
-y_test = np.reshape(fireVarTest.values,[fireVarTest.shape[0],])
-
+X_train, y_train = encodedToXY(encoded_traindata)
+X_test, y_test = encodedToXY(encoded_testdata)
 # ================= #4 DONE, ^final training and testing data ===================
 
 
@@ -438,11 +418,11 @@ kappa = cohen_kappa_score(real, pred)
 fpr, tpr, thresholds = metrics.roc_curve(y_test, pred, pos_label=1)
 roc_auc = metrics.auc(fpr, tpr)
 
-acc = 'Accuracy = {0}'.format(float(cm[0][0] + cm[1][1])/len(real))
-kapp = 'kappa score = {0}'.format(kappa)
-auc = 'AUC Score = {0}'.format(metrics.auc(fpr, tpr))
-recall = 'recall = {0}'.format(tpr[1])
-precis = 'precision = {0}'.format(float(cm[1][1])/(cm[1][1]+cm[0][1]))
+acc = 'Accuracy = {0} \n \n'.format(float(cm[0][0] + cm[1][1])/len(real))
+kapp = 'kappa score = {0} \n \n'.format(kappa)
+auc = 'AUC Score = {0} \n \n'.format(metrics.auc(fpr, tpr))
+recall = 'recall = {0} \n \n'.format(tpr[1])
+precis = 'precision = {0} \n \n'.format(float(cm[1][1])/(cm[1][1]+cm[0][1]))
 
 print acc
 print kapp
@@ -450,15 +430,23 @@ print auc
 print recall
 print precis
 
+
+
 ### Write model performance to log file:
-log_path = "/home/linadmin/FirePred/logs/"
+log_path = os.path.join(curr_path, "log/")
+
 with open('{0}ModelPerformance_{1}.txt'.format(log_path, datetime.datetime.now()), 'a') as log_file:
-    log_file.write(cm)
+    log_file.write("Confusion Matrix: \n \n")
+    for item in cm:
+        print>>log_file, item
+    log_file.write("Model performance metrics: \n \n")
     log_file.write(acc)
     log_file.write(kapp)
     log_file.write(auc)
     log_file.write(recall)
     log_file.write(precis)
+
+
 
 #Getting the probability scores
 predictions = model.predict_proba(X_test)
@@ -477,11 +465,12 @@ cols = {"Address": addresses, "Fire":pred,"RiskScore":risk,"state_desc":state_de
 Results = pd.DataFrame(cols)
 
 #Writing results to the updating Results.csv
-Results.to_csv('/home/linadmin/FirePred/datasets/Results.csv')
+Results.to_csv(os.path.join(dataset_path, "Results.csv"))
 
 
 # Writing results to a log file
 Results.to_csv('{0}Results_{1}.csv'.format(log_path, datetime.datetime.now()))
+
 
 #Plotting the ROC curve
 plt.title('Receiver Operating Characteristic')
@@ -495,14 +484,22 @@ plt.ylabel('True Positive Rate')
 plt.xlabel('False Positive Rate')
 #plt.show()
 
-png_path = "/home/linadmin/FirePred/images/"
+
+png_path = os.path.join(curr_path, "images/")
 roc_png = "{0}ROC_{1}.png".format(png_path, datetime.datetime.now())
 plt.savefig(roc_png, dpi=150)
+plt.clf()   # Clear figure
 
 #Tree model for getting features importance
 clf = ExtraTreesClassifier()
-clf = clf.fit(X_train, y_train)
-clf.feature_importances_
+imputed_fireVarTrain = fireVarTrain.fillna(method="ffill")
+imputed_encoded_traindata = encoded_traindata.fillna(method="ffill")
+
+impute_X = np.array(imputed_encoded_traindata)
+impute_y = np.reshape(imputed_fireVarTrain.values,[imputed_fireVarTrain.shape[0],])
+
+clf = clf.fit(impute_X, impute_y)
+
 
 UsedDf = encoded_traindata
 important_features = pd.Series(data=clf.feature_importances_,index=UsedDf.columns)
@@ -518,7 +515,13 @@ plt.xticks(y_pos, important_features.index[0:20], rotation = (90), fontsize = 11
 plt.ylabel('Feature Importance Scores')
 plt.title('Feature Importance')
 
-features_png = "{0}FeatureImportance_{1}.png".format(png_path, datetime.datetime.now())
+
+features_png = "{0}FeatureImportancePlot_{1}.png".format(png_path, datetime.datetime.now())
 plt.savefig(features_png, dpi=150)
+plt.clf()
+
+important_features[0:50].to_csv('{0}FeatureImportanceList_{1}.csv'.format(log_path, datetime.datetime.now()))
+
+
 
 #plt.show()
