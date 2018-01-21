@@ -39,27 +39,21 @@ from xgboost import XGBClassifier
 from sklearn.ensemble import ExtraTreesClassifier
 import datetime
 from dateutil.relativedelta import relativedelta
-import os
 
-# create directory paths for opening files
-curr_path = os.path.dirname(os.path.realpath(__file__))
-dataset_path = os.path.join(curr_path, "datasets/")
 
 
 # Turn off pandas chained assignment warning
 pd.options.mode.chained_assignment = None  # default='warn'
 
+# =============================#1: CLEAN PLI & PITT DATA========================
 # Reading plidata
-plidata = pd.read_csv(os.path.join(dataset_path, "pli.csv"),encoding = 'utf-8',dtype={'STREET_NUM':'str','STREET_NAME':'str'}, low_memory=False)
+plidata = pd.read_csv('/home/linadmin/FirePred/datasets/pli.csv',
+                      encoding = 'utf-8',dtype={'STREET_NUM':'str','STREET_NAME':'str'}, low_memory=False)
 #Reading city of Pittsburgh dataset
-pittdata = pd.read_csv(os.path.join(dataset_path, "pittdata.csv"),dtype={'PROPERTYADDRESS':'str','PROPERTYHOUSENUM':'str','CLASSDESC':'str'}, low_memory=False)
+pittdata = pd.read_csv('/home/linadmin/FirePred/datasets/pittdata.csv',
+                       dtype={'PROPERTYADDRESS':'str','PROPERTYHOUSENUM':'str','CLASSDESC':'str'}, low_memory=False)
 
-
-#removing all properties outside Pittsburgh, Wilkinsburg, and Ingram
-#pittdata = pittdata[(pittdata.PROPERTYCITY == 'Pittsburgh') & (pittdata.PROPERTYCITY == 'Wilkinsburg') & (pittdata.PROPERTYCITY == 'Ingram')]
-pittdata = pittdata[(pittdata.PROPERTYCITY == 'PITTSBURGH')]# & (pittdata.PROPERTYCITY == 'WILKINSBURG') & (pittdata.PROPERTYCITY == 'INGRAM')]
-
-# #removing extra whitespaces
+#removing extra whitespaces
 plidata['STREET_NAME'] = plidata['STREET_NAME'].str.strip()
 plidata['STREET_NUM'] = plidata['STREET_NUM'].str.strip()
 
@@ -68,15 +62,14 @@ pittdata = pittdata[pittdata.CLASSDESC!='RESIDENTIAL']
 pittdata = pittdata[pittdata.PROPERTYHOUSENUM!= '0']
 pittdata = pittdata[pittdata.PROPERTYADDRESS!= '']
 
-
-
 #dropping columns with less than 15% data
 pittdata = pittdata.dropna(thresh=4000, axis=1)
 pittdata = pittdata.rename(columns={pittdata.columns[0]:'PARID'})
 pittdata = pittdata.drop_duplicates()
 
 #merging pli with city of pitt
-plipca = pd.merge(pittdata, plidata[['PARCEL','INSPECTION_DATE','INSPECTION_RESULT','VIOLATION']], how = 'left', left_on =['PARID'], right_on = ['PARCEL'] )
+plipca = pd.merge(pittdata, plidata[['PARCEL','INSPECTION_DATE','INSPECTION_RESULT','VIOLATION']], how = 'left',
+                  left_on =['PARID'], right_on = ['PARCEL'] )
 plipca = plipca.drop_duplicates()
 
 
@@ -166,16 +159,18 @@ result8 = temp[idx]
 result8 = result8.drop_duplicates(subset=[ "PROPERTYHOUSENUM", "PROPERTYADDRESS"], keep = 'last')
 del result8['count']
 
-
-
 dfs = [result1,result2,result3,result4,result6,result7,result8,numerical]
-
 pcafinal = reduce(lambda left,right: pd.merge(left,right,on= [ "PROPERTYHOUSENUM", "PROPERTYADDRESS"] ), dfs)
-
 plipca1 = pd.merge(pcafinal, newpli, how = 'left', left_on =[ "PROPERTYHOUSENUM", "PROPERTYADDRESS"], right_on = [ "PROPERTYHOUSENUM", "PROPERTYADDRESS"] )
+# ============#1 DONE, ^this is the cleaned dataframe of pli + pitt ============
 
+
+# =====================#2 CLEAN FIRE INCIDENT DATA====================
 #loading fire incidents csvs
-fire_pre14 = pd.read_csv(os.path.join(dataset_path, "Fire_Incidents_Pre14.csv"),encoding = 'latin-1',dtype={'street':'str','number':'str'}, low_memory=False)
+fire_pre14 = pd.read_csv('/home/linadmin/FirePred/datasets/Fire_Incidents_Pre14.csv',encoding = 'latin-1',
+                         dtype={'street':'str','number':'str'}, low_memory=False)
+fire_new = pd.read_csv('/home/linadmin/FirePred/datasets/Fire_Incidents_New.csv',encoding = 'utf-8',
+                       dtype={'street':'str','number':'str'}, low_memory=False)
 
 #cleaning columns of fire_pre14
 fire_pre14['full.code'] = fire_pre14['full.code'].str.replace('  -',' -')
@@ -185,103 +180,57 @@ fire_pre14['number'] = fire_pre14['number'].str.strip()
 fire_pre14['st_type'] = fire_pre14['st_type'].str.replace('AV','AVE')
 fire_pre14['street'] = fire_pre14['street'].str.strip() +' ' +fire_pre14['st_type'].str.strip()
 
-#reading the fire_historicalfile
-fire_new = pd.read_csv(os.path.join(dataset_path, "Fire_Incidents_New.csv"),encoding = 'utf-8',dtype={'street':'str','number':'str'}, low_memory=False)
+# drop irrelevant columns
+pre14_drop = ['PRIMARY_UNIT','MAP_PAGE','alm_dttm','arv_dttm','XCOORD','YCOORD',
+              'inci_id','inci_type','alarms','st_prefix','st_suffix','st_type','CALL_NO']
+for col in pre14_drop:
+    del fire_pre14[col]
+pre14_drop = [0, 4]
+fire_pre14.drop(fire_pre14.columns[pre14_drop], axis=1, inplace=True)
 
-#deleting columns not required
-del fire_new['alm_dttm']
-del fire_new['arv_dttm']
-del fire_new['XCOORD']
-del fire_new['YCOORD']
-del fire_new['alarms']
-del fire_new['CALL_NO']
-del fire_pre14['PRIMARY_UNIT']
-del fire_pre14['MAP_PAGE']
-del fire_pre14['alm_dttm']
-del fire_pre14['arv_dttm']
-del fire_pre14['XCOORD']
-del fire_pre14['YCOORD']
-del fire_pre14['inci_id']
-del fire_pre14['inci_type']
-del fire_pre14['alarms']
-del fire_pre14['st_prefix']
-del fire_pre14['st_suffix']
-del fire_pre14['st_type']
-del fire_pre14['CALL_NO']
+post14_drop = ['alm_dttm','arv_dttm','XCOORD','YCOORD','alarms','inci_type','CALL_NO']
+for col in post14_drop:
+    del fire_new[col]
 
-cols = [0,4]
-fire_pre14.drop(fire_pre14.columns[cols],axis=1,inplace=True)
-
-#joining both the fire incidents file together
+# combine data from two csvs together
 fire_new = fire_new.append(fire_pre14, ignore_index=True)
 
-#more cleaning and removing descriptions which are not fire related
+# removing events that are not fire related
 fire_new['descript'] = fire_new['descript'].str.strip()
-fire_new = fire_new[fire_new.descript != 'System malfunction, Other']
-# fire_new = fire_new[fire_new.descript != 'Smoke detector activation, no fire - unintentional']
-# fire_new = fire_new[fire_new.descript != 'Alarm system activation, no fire - unintentional']
-fire_new = fire_new[fire_new.descript != 'Detector activation, no fire - unintentional']
-fire_new = fire_new[fire_new.descript != 'Smoke detector activation due to malfunction']
-fire_new = fire_new[fire_new.descript != 'Dispatched & cancelled en route']
-fire_new = fire_new[fire_new.descript != 'Dispatched & cancelled on arrival']
-fire_new = fire_new[fire_new.descript != 'EMS call, excluding vehicle accident with injury']
-fire_new = fire_new[fire_new.descript != 'Medical assist, assist EMS crew']
-fire_new = fire_new[fire_new.descript != 'Emergency medical service, other']
-fire_new = fire_new[fire_new.descript != 'Good intent call, Other']
-fire_new = fire_new[fire_new.descript != 'Rescue, EMS incident, other']
-fire_new = fire_new[fire_new.descript != 'Medical Alarm Activation (No Medical Service Req)']
-fire_new = fire_new[fire_new.descript != 'Motor Vehicle Accident with no injuries']
-fire_new = fire_new[fire_new.descript != 'No Incident found on arrival at dispatch address']
-fire_new = fire_new[fire_new.descript != 'Unintentional transmission of alarm, Other']
-fire_new = fire_new[fire_new.descript != 'Motor vehicle accident with injuries']
-fire_new = fire_new[fire_new.descript != 'Vehicle accident, general cleanup']
-fire_new = fire_new[fire_new.descript != 'Power line down']
-fire_new = fire_new[fire_new.descript != 'Person in distress, Other']
-fire_new = fire_new[fire_new.descript != 'Cable/Telco Wires Down']
-fire_new = fire_new[fire_new.descript != 'Service Call, other']
-fire_new = fire_new[fire_new.descript != 'Vehicle Accident canceled en route']
-fire_new = fire_new[fire_new.descript != 'Lock-out']
-fire_new = fire_new[fire_new.descript != 'False alarm or false call, Other']
-fire_new = fire_new[fire_new.descript != 'Assist police or other governmental agency']
-fire_new = fire_new[fire_new.descript != 'Special type of incident, Other']
-fire_new = fire_new[fire_new.descript != 'Alarm system sounded due to malfunction']
-fire_new = fire_new[fire_new.descript != 'Motor vehicle/pedestrian accident (MV Ped)']
-fire_new = fire_new[fire_new.descript != 'Assist invalid ']
-fire_new = fire_new[fire_new.descript != 'Malicious, mischievous false call, Other']
-fire_new = fire_new[fire_new.descript != 'Accident, potential accident, Other']
-fire_new = fire_new[fire_new.descript != 'Assist invalid']
-fire_new = fire_new[fire_new.descript != 'EMS call, party transported by non-fire agency']
-fire_new = fire_new[fire_new.descript != 'Rescue or EMS standby']
-fire_new = fire_new[fire_new.descript != 'Public service assistance, Other']
-fire_new = fire_new[fire_new.descript != 'Police matter']
-fire_new = fire_new[fire_new.descript != 'Lock-in (if lock out , use 511 )']
-fire_new = fire_new[fire_new.descript != 'Sprinkler activation, no fire - unintentional']
-fire_new = fire_new[fire_new.descript != 'Wrong location']
-fire_new = fire_new[fire_new.descript != 'Local alarm system, malicious false alarm']
-fire_new = fire_new[fire_new.descript != 'Authorized controlled burning']
-fire_new = fire_new[fire_new.descript != 'Water problem, Other']
-# fire_new = fire_new[fire_new.descript != 'Smoke or odor removal']
-fire_new = fire_new[fire_new.descript != 'Passenger vehicle fire']
-fire_new = fire_new[fire_new.descript != 'CO detector activation due to malfunction']
-fire_new = fire_new[fire_new.descript != 'Authorized controlled burning']
-fire_new = fire_new[fire_new.descript != 'Steam, vapor, fog or dust thought to be smoke']
-fire_new = fire_new[fire_new.descript != 'Overheated motor']
-fire_new = fire_new[fire_new.descript != 'Local alarm system, malicious false alarm']
-fire_new = fire_new[fire_new.descript != 'Central station, malicious false alarm']
-fire_new = fire_new[fire_new.descript != 'Public service']
-# fire_new = fire_new[fire_new.descript != 'Building or structure weakened or collapsed']
-fire_new = fire_new[fire_new.descript != 'Heat detector activation due to malfunction']
-fire_new = fire_new[fire_new.descript != 'Citizen complaint']
-fire_new = fire_new[fire_new.descript != 'Municipal alarm system, malicious false alarm']
-fire_new = fire_new[fire_new.descript != 'Sprinkler activation due to malfunction']
-fire_new = fire_new[fire_new.descript != 'Severe weather or natural disaster, Other']
-fire_new = fire_new[fire_new.descript != 'Water evacuation']
-fire_new = fire_new[fire_new.descript != 'Breakdown of light ballast']
-fire_new = fire_new[fire_new.descript != 'Extrication of victim(s) from vehicle']
-fire_new = fire_new[fire_new.descript != 'Flood assessment']
-fire_new = fire_new[fire_new.descript != 'Telephone, malicious false alarm']
-fire_new = fire_new[fire_new.descript != 'Cover assignment, standby, moveup']
-fire_new = fire_new[fire_new.descript != 'Road freight or transport vehicle fire']
+remove_descript = ['System malfunction, Other',
+                   # 'Smoke detector activation, no fire - unintentional']
+                   # 'Alarm system activation, no fire - unintentional']
+                   'Detector activation, no fire - unintentional', 'Smoke detector activation due to malfunction',
+                   'Dispatched & cancelled en route', 'Dispatched & cancelled on arrival',
+                   'EMS call, excluding vehicle accident with injury', 'Medical assist, assist EMS crew',
+                   'Emergency medical service, other', 'Good intent call, Other', 'Rescue, EMS incident, other',
+                   'Medical Alarm Activation (No Medical Service Req)', 'Motor Vehicle Accident with no injuries',
+                   'No Incident found on arrival at dispatch address', 'Unintentional transmission of alarm, Other',
+                   'Motor vehicle accident with injuries', 'Vehicle accident, general cleanup', 'Power line down',
+                   'Person in distress, Other', 'Cable/Telco Wires Down', 'Service Call, other',
+                   'Vehicle Accident canceled en route', 'Lock-out', 'False alarm or false call, Other',
+                   'Assist police or other governmental agency', 'Special type of incident, Other',
+                   'Alarm system sounded due to malfunction', 'Motor vehicle/pedestrian accident (MV Ped)',
+                   'Assist invalid ', 'Malicious, mischievous false call, Other', 'Accident, potential accident, Other',
+                   'Assist invalid', 'EMS call, party transported by non-fire agency', 'Rescue or EMS standby',
+                   'Public service assistance, Other', 'Police matter', 'Lock-in (if lock out , use 511 )',
+                   'Sprinkler activation, no fire - unintentional', 'Wrong location',
+                   'Local alarm system, malicious false alarm', 'Authorized controlled burning',
+                   'Water problem, Other',
+                   # 'Smoke or odor removal']
+                   'Passenger vehicle fire', 'CO detector activation due to malfunction',
+                   'Authorized controlled burning', 'Steam, vapor, fog or dust thought to be smoke', 'Overheated motor',
+                   'Local alarm system, malicious false alarm', 'Central station, malicious false alarm',
+                   'Public service',
+                   # 'Building or structure weakened or collapsed'
+                   'Heat detector activation due to malfunction', 'Citizen complaint',
+                   'Municipal alarm system, malicious false alarm', 'Sprinkler activation due to malfunction',
+                   'Severe weather or natural disaster, Other', 'Water evacuation', 'Breakdown of light ballast',
+                   'Extrication of victim(s) from vehicle', 'Flood assessment', 'Telephone, malicious false alarm',
+                   'Cover assignment, standby, moveup', 'Road freight or transport vehicle fire']
+
+for descript in remove_descript:
+    fire_new = fire_new[fire_new.descript != descript]
 fire_new = fire_new[fire_new['full.code'].str.strip()  != '540 - Animal problem, Other']
 fire_new = fire_new[fire_new['full.code'].str.strip()  != '5532 - Public Education (Station Visit)']
 fire_new = fire_new[fire_new['full.code'].str.strip()  != '353 - Removal of victim(s) from stalled elevator']
@@ -306,7 +255,10 @@ for col,val in fire_new['full.code'].value_counts().iteritems():
         fire_new = fire_new[fire_new['full.code'] != col]
 
 fire_new = fire_new.drop_duplicates()
+# ============#2 DONE, ^this is the cleaned data frame of fire incident ============
 
+
+# =====================#3 JOIN TWO DATASETS AND FINAL CLEANING =====================
 #joining plipca with fireincidents
 pcafire = pd.merge(plipca1, fire_new, how = 'left', left_on =['PROPERTYADDRESS','PROPERTYHOUSENUM'],
         right_on = ['street','number'])
@@ -326,7 +278,9 @@ pcafire1 = pcafire1[pd.notnull(pcafire1.INSPECTION_DATE)]
 pcafire2 = pcafire1[(pcafire1.violation_year == pcafire1.fire_year)]
 
 #joining all rows with no pli violations
-fire_nopli = pd.concat([fire_new, pcafire2[['number','street','CALL_CREATED_DATE','full.code','response_time','fire_year']], pcafire2[['number','street','CALL_CREATED_DATE','full.code','response_time','fire_year']]]).drop_duplicates(keep=False)
+fire_nopli = pd.concat([fire_new, pcafire2[['number','street','CALL_CREATED_DATE','full.code','response_time',
+                                            'fire_year']], pcafire2[['number','street','CALL_CREATED_DATE','full.code',
+                                                                     'response_time','fire_year']]]).drop_duplicates(keep=False)
 pcafire_nopli = pd.merge(pcafinal, fire_nopli, how = 'left', left_on =['PROPERTYADDRESS','PROPERTYHOUSENUM'],
         right_on = ['street','number'])
 
@@ -337,6 +291,16 @@ pcafire_nopli['full.code'][pcafire_nopli['fire'] == 'fire'] = None
 
 #combined_df is the final file
 combined_df  = pcafire_nopli.append(pcafire2, ignore_index=True)
+#combined_df.to_csv('datasets/Final_Combined_Df.csv')
+# ================= #3 DONE, ^this is final cleaned dataframe ===================
+
+
+# =========================== #4 PREPARE DATA =============================
+# this part splits the data into training and testing, then coverts the log
+# of incident/inspection violation data and convert it to building addresses
+
+#Reading the cleaned dataset
+#combined_df = pd.read_csv('Final_Combined_Df.csv')
 
 #Removing vacant commerical land
 combined_df = combined_df[combined_df.USEDESC!= 'VACANT COMMERCIAL LAND']
@@ -350,7 +314,8 @@ ohe8 = pd.get_dummies(combined_df['full.code'])
 ohe10 = pd.get_dummies(combined_df['INSPECTION_RESULT'])
 
 #concatenating the features together
-combined_df1 = pd.concat([combined_df[['PROPERTYADDRESS','PROPERTYHOUSENUM','CALL_CREATED_DATE','fire','fire_year']],ohe8,ohe9,ohe10], axis=1)
+combined_df1 = pd.concat([combined_df[['PROPERTYADDRESS','PROPERTYHOUSENUM','CALL_CREATED_DATE','fire','fire_year']],
+                          ohe8,ohe9,ohe10], axis=1)
 
 
 #PREPARING THE TESTING DATA (final 6 months of data)
@@ -393,18 +358,10 @@ address= test_data['PROPERTYADDRESS']
 housenum= test_data['PROPERTYHOUSENUM']
 
 #Deleting features not required anymore or already one hot encoded for the model
-del test_data['CALL_CREATED_DATE']
-del test_data['CLASSDESC']
-del test_data['SCHOOLDESC']
-del test_data['OWNERDESC']
-del test_data['MUNIDESC']
-del test_data['NEIGHCODE']
-del test_data['TAXDESC']
-del test_data['USEDESC']
-del test_data['fire_year']
-del test_data['PROPERTYADDRESS']
-del test_data['PROPERTYHOUSENUM']
-
+ohe_del = ['CALL_CREATED_DATE','CLASSDESC','SCHOOLDESC','OWNERDESC','MUNIDESC',
+           'NEIGHCODE','TAXDESC','USEDESC','fire_year','PROPERTYADDRESS','PROPERTYHOUSENUM']
+for col in ohe_del:
+    del test_data[col]
 #Concatenating everything back together
 encoded_testdata = pd.concat([test_data,ohe1,ohe2,ohe3,ohe4,ohe5,ohe6,ohe7], axis=1)
 
@@ -435,17 +392,8 @@ ohe6 = pd.get_dummies(train_data['TAXDESC'])
 ohe7 = pd.get_dummies(train_data['USEDESC'])
 
 #deleting the categories
-del train_data['CLASSDESC']
-del train_data['CALL_CREATED_DATE']
-del train_data['SCHOOLDESC']
-del train_data['OWNERDESC']
-del train_data['MUNIDESC']
-del train_data['NEIGHCODE']
-del train_data['TAXDESC']
-del train_data['USEDESC']
-del train_data['fire_year']
-del train_data['PROPERTYADDRESS']
-del train_data['PROPERTYHOUSENUM']
+for col in ohe_del:
+    del train_data[col]
 
 #concatenating all the created features together
 encoded_traindata = pd.concat([train_data,ohe1,ohe2,ohe3,ohe4,ohe5,ohe6,ohe7], axis=1)
@@ -462,6 +410,10 @@ del encoded_testdata['fire']
 X_test = np.array(encoded_testdata)
 y_test = np.reshape(fireVarTest.values,[fireVarTest.shape[0],])
 
+# ================= #4 DONE, ^final training and testing data ===================
+
+
+# =========================== #5 MODEL & PREDICTION =============================
 #The XG Boost model
 #Grid Search was taking too long a time to run hence did hyperparameter tuning manually and arrived
 #at the below parameters fiving the most optimal result
@@ -486,11 +438,11 @@ kappa = cohen_kappa_score(real, pred)
 fpr, tpr, thresholds = metrics.roc_curve(y_test, pred, pos_label=1)
 roc_auc = metrics.auc(fpr, tpr)
 
-acc = 'Accuracy = {0} \n \n'.format(float(cm[0][0] + cm[1][1])/len(real))
-kapp = 'kappa score = {0} \n \n'.format(kappa)
-auc = 'AUC Score = {0} \n \n'.format(metrics.auc(fpr, tpr))
-recall = 'recall = {0} \n \n'.format(tpr[1])
-precis = 'precision = {0} \n \n'.format(float(cm[1][1])/(cm[1][1]+cm[0][1]))
+acc = 'Accuracy = {0}'.format(float(cm[0][0] + cm[1][1])/len(real))
+kapp = 'kappa score = {0}'.format(kappa)
+auc = 'AUC Score = {0}'.format(metrics.auc(fpr, tpr))
+recall = 'recall = {0}'.format(tpr[1])
+precis = 'precision = {0}'.format(float(cm[1][1])/(cm[1][1]+cm[0][1]))
 
 print acc
 print kapp
@@ -498,23 +450,15 @@ print auc
 print recall
 print precis
 
-
-
 ### Write model performance to log file:
-log_path = os.path.join(curr_path, "log/")
-
+log_path = "/home/linadmin/FirePred/logs/"
 with open('{0}ModelPerformance_{1}.txt'.format(log_path, datetime.datetime.now()), 'a') as log_file:
-    log_file.write("Confusion Matrix: \n \n")
-    for item in cm:
-        print>>log_file, item
-    log_file.write("Model performance metrics: \n \n")
+    log_file.write(cm)
     log_file.write(acc)
     log_file.write(kapp)
     log_file.write(auc)
     log_file.write(recall)
     log_file.write(precis)
-
-
 
 #Getting the probability scores
 predictions = model.predict_proba(X_test)
@@ -533,12 +477,11 @@ cols = {"Address": addresses, "Fire":pred,"RiskScore":risk,"state_desc":state_de
 Results = pd.DataFrame(cols)
 
 #Writing results to the updating Results.csv
-Results.to_csv(os.path.join(dataset_path, "Results.csv"))
+Results.to_csv('/home/linadmin/FirePred/datasets/Results.csv')
 
 
 # Writing results to a log file
 Results.to_csv('{0}Results_{1}.csv'.format(log_path, datetime.datetime.now()))
-
 
 #Plotting the ROC curve
 plt.title('Receiver Operating Characteristic')
@@ -552,22 +495,14 @@ plt.ylabel('True Positive Rate')
 plt.xlabel('False Positive Rate')
 #plt.show()
 
-
-png_path = os.path.join(curr_path, "images/")
+png_path = "/home/linadmin/FirePred/images/"
 roc_png = "{0}ROC_{1}.png".format(png_path, datetime.datetime.now())
 plt.savefig(roc_png, dpi=150)
-plt.clf()   # Clear figure
 
 #Tree model for getting features importance
 clf = ExtraTreesClassifier()
-imputed_fireVarTrain = fireVarTrain.fillna(method="ffill")
-imputed_encoded_traindata = encoded_traindata.fillna(method="ffill")
-
-impute_X = np.array(imputed_encoded_traindata)
-impute_y = np.reshape(imputed_fireVarTrain.values,[imputed_fireVarTrain.shape[0],])
-
-clf = clf.fit(impute_X, impute_y)
-
+clf = clf.fit(X_train, y_train)
+clf.feature_importances_
 
 UsedDf = encoded_traindata
 important_features = pd.Series(data=clf.feature_importances_,index=UsedDf.columns)
@@ -583,13 +518,7 @@ plt.xticks(y_pos, important_features.index[0:20], rotation = (90), fontsize = 11
 plt.ylabel('Feature Importance Scores')
 plt.title('Feature Importance')
 
-
-features_png = "{0}FeatureImportancePlot_{1}.png".format(png_path, datetime.datetime.now())
+features_png = "{0}FeatureImportance_{1}.png".format(png_path, datetime.datetime.now())
 plt.savefig(features_png, dpi=150)
-plt.clf()
-
-important_features[0:50].to_csv('{0}FeatureImportanceList_{1}.csv'.format(log_path, datetime.datetime.now()))
-
-
 
 #plt.show()
