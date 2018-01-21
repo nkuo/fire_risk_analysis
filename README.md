@@ -1,7 +1,8 @@
 # fire_risk_analysis
 Modeling structure fire risk to inform fire inspections
 
-##How to set up
+## How to set up
+
 Download data files into /datasets:
 pittdata.csv, parcels.csv, pli.csv from getdata.py
 Fire_Pre14, Fire_New from Google Drive
