@@ -178,10 +178,8 @@ plipca1 = pd.merge(pcafinal, newpli, how = 'left', left_on =[ "PROPERTYHOUSENUM"
 
 # =====================#2 CLEAN FIRE INCIDENT DATA====================
 #loading fire incidents csvs
-fire_pre14 = pd.read_csv('/home/linadmin/FirePred/datasets/Fire_Incidents_Pre14.csv',encoding = 'latin-1',
-                         dtype={'street':'str','number':'str'}, low_memory=False)
-fire_new = pd.read_csv('/home/linadmin/FirePred/datasets/Fire_Incidents_New.csv',encoding = 'utf-8',
-                       dtype={'street':'str','number':'str'}, low_memory=False)
+fire_pre14 = pd.read_csv(os.path.join(dataset_path, "Fire_Incidents_Pre14.csv"),encoding = 'latin-1',dtype={'street':'str','number':'str'}, low_memory=False)
+fire_new = pd.read_csv(os.path.join(dataset_path, "Fire_Incidents_New.csv"),encoding = 'utf-8',dtype={'street':'str','number':'str'}, low_memory=False)
 
 #cleaning columns of fire_pre14
 fire_pre14['full.code'] = fire_pre14['full.code'].str.replace('  -',' -')
