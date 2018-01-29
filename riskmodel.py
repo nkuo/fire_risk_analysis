@@ -31,7 +31,7 @@ from sklearn.cross_validation import KFold, StratifiedKFold, cross_val_score
 from sklearn.pipeline import Pipeline
 from sklearn.linear_model import LogisticRegression
 from sklearn.grid_search import GridSearchCV
-from sklearn_pandas import DataFrameMapper
+#from sklearn_pandas import DataFrameMapper
 from sklearn.preprocessing import OneHotEncoder
 from sklearn import metrics
 from sklearn.metrics import confusion_matrix
@@ -319,11 +319,9 @@ ohe10 = pd.get_dummies(combined_df['INSPECTION_RESULT'])
 #concatenating the features together
 combined_df1 = pd.concat([combined_df[['PROPERTYADDRESS','PROPERTYHOUSENUM','CALL_CREATED_DATE','fire','fire_year']],ohe8,ohe9,ohe10], axis=1)
 
-
 #PREPARING THE TESTING DATA (final 6 months of data)
 cutoff = datetime.datetime.now() - relativedelta(months=6)
 cutoffdate = cutoff.strftime("%m/%d/%Y")
-
 
 testdata = combined_df1[combined_df1.CALL_CREATED_DATE > cutoffdate]
 testdata2 = testdata.groupby( [ "PROPERTYHOUSENUM", "PROPERTYADDRESS",'CALL_CREATED_DATE','fire_year'] ).sum().reset_index()
@@ -362,6 +360,7 @@ housenum= test_data['PROPERTYHOUSENUM']
 #Deleting features not required anymore or already one hot encoded for the model
 ohe_del = ['CALL_CREATED_DATE','CLASSDESC','SCHOOLDESC','OWNERDESC','MUNIDESC',
            'NEIGHCODE','TAXDESC','USEDESC','fire_year','PROPERTYADDRESS','PROPERTYHOUSENUM']
+
 for col in ohe_del:
     del test_data[col]
 
@@ -394,23 +393,45 @@ ohe5 = pd.get_dummies(train_data['NEIGHCODE'])
 ohe6 = pd.get_dummies(train_data['TAXDESC'])
 ohe7 = pd.get_dummies(train_data['USEDESC'])
 
+#removing call created date to created valuation dataset
+ohe_del1 = ['CLASSDESC','SCHOOLDESC','OWNERDESC','MUNIDESC',
+           'NEIGHCODE','TAXDESC','USEDESC','fire_year','PROPERTYADDRESS','PROPERTYHOUSENUM']
+
 #deleting the categories
-for col in ohe_del:
+for col in ohe_del1:
     del train_data[col]
 
 #concatenating all the created features together
 encoded_traindata = pd.concat([train_data,ohe1,ohe2,ohe3,ohe4,ohe5,ohe6,ohe7], axis=1)
 
+#making valuation dataset before CALL_CREATED_DATE is deleted
+valuation_cutoff = datetime.datetime.now() - relativedelta(months = 12)
+val_cutoffdate = valuation_cutoff.strftime("%m/%d/%Y")
+
+encoded_traindata['CALL_CREATED_DATE'] = pd.to_datetime(encoded_traindata['CALL_CREATED_DATE'], errors='coerce')
+encoded_traindata.to_csv("encode_train.csv")
+print "printed encoded_train"
+valuation_data = encoded_traindata[encoded_traindata.CALL_CREATED_DATE >= val_cutoffdate]
+fs_train_data = encoded_traindata[encoded_traindata.CALL_CREATED_DATE < val_cutoffdate]
+
+del encoded_traindata['CALL_CREATED_DATE']
+del valuation_data['CALL_CREATED_DATE']
+del fs_train_data['CALL_CREATED_DATE']
+
+
 #converting to array and reshaping the data to prep for model
 fireVarTrain = encoded_traindata['fire']
-del encoded_traindata['fire']
-X_train = np.array(encoded_traindata)
+#del encoded_traindata['fire']
+no_fire_train = encoded_traindata.drop(['fire'], axis =1)
+X_train = np.array(no_fire_train)
 y_train = np.reshape(fireVarTrain.values,[fireVarTrain.shape[0],])
 
 #converting to array and reshaping the data to prep for model
 fireVarTest = encoded_testdata['fire']
-del encoded_testdata['fire']
-X_test = np.array(encoded_testdata)
+#del encoded_testdata['fire']
+no_fire_test = encoded_testdata.drop(['fire'], axis =1)
+#dropping fire attribute to make fire valuation dataset later
+X_test = np.array(no_fire_test)
 y_test = np.reshape(fireVarTest.values,[fireVarTest.shape[0],])
 # ================= #4 DONE, ^final training and testing data ===================
 
@@ -452,11 +473,10 @@ print auc
 print recall
 print precis
 
-
-
 ### Write model performance to log file:
 log_path = os.path.join(curr_path, "log/")
 
+'''
 with open('{0}ModelPerformance_{1}.txt'.format(log_path, datetime.datetime.now()), 'a') as log_file:
     log_file.write("Confusion Matrix: \n \n")
     for item in cm:
@@ -467,7 +487,7 @@ with open('{0}ModelPerformance_{1}.txt'.format(log_path, datetime.datetime.now()
     log_file.write(auc)
     log_file.write(recall)
     log_file.write(precis)
-
+'''
 
 
 #Getting the probability scores
@@ -485,7 +505,7 @@ cols = {"Address": addresses, "Fire":pred,"RiskScore":risk,"state_desc":state_de
         "owner_desc":owner_desc,"muni_desc":muni_desc,"neigh_desc":neigh_desc,"tax_desc":tax_desc,"use_desc":use_desc}
 
 Results = pd.DataFrame(cols)
-
+'''
 #Writing results to the updating Results.csv
 Results.to_csv(os.path.join(dataset_path, "Results.csv"))
 
@@ -511,11 +531,125 @@ png_path = os.path.join(curr_path, "images/")
 roc_png = "{0}ROC_{1}.png".format(png_path, datetime.datetime.now())
 plt.savefig(roc_png, dpi=150)
 plt.clf()   # Clear figure
+'''
+
+print "Start Feature Selection"
+# ==== Feature Selection using Feature Importance =====
+from sklearn.feature_selection import SelectFromModel
+from sklearn.metrics import accuracy_score
+
+# imputed the values to run with the xgboost features selection
+fireVarVal = valuation_data['fire'].fillna(method="ffill")
+del valuation_data['fire']
+# valuation datasets for feature selection
+valuation_X = np.array(valuation_data.fillna(method="ffill"))
+valuation_y = np.reshape(fireVarVal.values, [fireVarVal.shape[0],])
+
+# make the training dataset for feature selection removing the valuation data
+fireVarFSTrain = fs_train_data['fire'].fillna(method="ffill")
+del fs_train_data['fire']
+# imputed training data for the feature selection
+impute_X = np.array(fs_train_data.fillna(method="ffill"))
+impute_y = np.reshape(fireVarFSTrain.values, [fireVarFSTrain.shape[0],])
+
+# calculate imputed test dataset
+imputed_fireVarTest = fireVarTest.fillna(method="ffill")
+
+# imputed XY test - not used until the model evaluation
+impute_X_test = np.array(encoded_testdata.fillna(method="ffill"))
+impute_y_test = np.reshape(imputed_fireVarTest.values, [imputed_fireVarTest.shape[0],])
+
+#model for feature selection
+selection_model = XGBClassifier(learning_rate =0.13,
+        n_estimators=1500,
+        max_depth=5,min_child_weight=1,
+        gamma=0,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        objective= 'binary:logistic',
+        nthread=4,
+        seed=27)
+
+# create the list of features with corresponding feature importances
+feature_importance = pd.Series(data=model.feature_importances_, index=encoded_traindata.drop(['fire'], axis =1).columns)
+
+#sort the feature importance from low to hi
+feature_importance = feature_importance.sort_values()
+# Making threshold smaller
+thresh_num = 500
+
+feature_result = pd.DataFrame(columns=('Last_Feature', 'Thresh', 'Acc', 'Kapp', 'AUC', 'Recall', 'Precis'))
+
+for i in range(feature_importance.size-thresh_num, feature_importance.size):
+    # select features using threshold
+    selection = SelectFromModel(model, threshold=feature_importance[i], prefit=True)
+    select_X_train = selection.transform(impute_X)
+
+    # train model
+    selection_model.fit(select_X_train, impute_y)
+
+    # eval model
+    select_X_test = selection.transform(valuation_X)
+    y_pred = selection_model.predict(select_X_test)
+    predictions = [round(value) for value in y_pred]
+    #metric calculation
+    fpr, tpr, thresholds = metrics.roc_curve(valuation_y, predictions, pos_label=1)
+    accuracy = accuracy_score(valuation_y, predictions)
+    cm = confusion_matrix(valuation_y, predictions)
+    print confusion_matrix(valuation_y, predictions)
+
+    kappa = cohen_kappa_score(valuation_y, predictions)
+    acc = float(cm[0][0] + cm[1][1]) / len(valuation_y)
+    auc = metrics.auc(fpr, tpr)
+    recall = tpr[1]
+    precis = float(cm[1][1]) / (cm[1][1] + cm[0][1])
+
+    print("Thresh=%.3f, n=%d" % (feature_importance[i], select_X_train.shape[1]))
+    print 'Accuracy = {0} \n \n'.format(acc)
+    print 'kappa score = {0} \n \n'.format(kappa)
+    print 'AUC Score = {0} \n \n'.format(auc)
+    print 'recall = {0} \n \n'.format(recall)
+    print 'precision = {0} \n \n'.format(precis)
+
+    feature_result.loc[i] = [feature_importance.index[i], feature_importance[i], acc, kappa, auc, recall, precis]
+
+#find the best recall
+best_row = feature_result.loc[feature_result['Recall'].idxmax()]
+print "best row:"
+print best_row
+
+feature_result.to_csv("Feature_Selection_Results{0}.csv".format(datetime.datetime.now()))
+
+#test on the test data
+# eval model
+selection_test = SelectFromModel(model, threshold=best_row[1], prefit=True)
+select_X_test = selection_test.transform(impute_X_test)
+y_pred = selection_model.predict(select_X_test)
+predictions = [round(value) for value in y_pred]
+fpr, tpr, thresholds = metrics.roc_curve(impute_y_test, predictions, pos_label=1)
+accuracy = accuracy_score(impute_y_test, predictions)
+cm = confusion_matrix(impute_y_test, predictions)
+print confusion_matrix(impute_y_test, predictions)
+
+kappa = cohen_kappa_score(impute_y_test, predictions)
+acc = float(cm[0][0] + cm[1][1]) / len(impute_y_test)
+auc = metrics.auc(fpr, tpr)
+recall = tpr[1]
+precis = float(cm[1][1]) / (cm[1][1] + cm[0][1])
+
+print 'Final Test Data Results'
+print("Thresh=%.3f, n=%d" % (feature_importance[i], select_X_test.shape[1]))
+print 'Accuracy = {0} \n \n'.format(acc)
+print 'kappa score = {0} \n \n'.format(kappa)
+print 'AUC Score = {0} \n \n'.format(auc)
+print 'recall = {0} \n \n'.format(recall)
+print 'precision = {0} \n \n'.format(precis)
+
 
 #Tree model for getting features importance
 clf = ExtraTreesClassifier()
 imputed_fireVarTrain = fireVarTrain.fillna(method="ffill")
-imputed_encoded_traindata = encoded_traindata.fillna(method="ffill")
+imputed_encoded_traindata = encoded_traindata.drop(['fire']).fillna(method="ffill")
 
 impute_X = np.array(imputed_encoded_traindata)
 impute_y = np.reshape(imputed_fireVarTrain.values,[imputed_fireVarTrain.shape[0],])
@@ -523,7 +657,7 @@ impute_y = np.reshape(imputed_fireVarTrain.values,[imputed_fireVarTrain.shape[0]
 clf = clf.fit(impute_X, impute_y)
 
 
-UsedDf = encoded_traindata
+UsedDf = encoded_traindata.drop(['fire'])
 important_features = pd.Series(data=clf.feature_importances_,index=UsedDf.columns)
 important_features.sort_values(ascending=False,inplace=True)
 #top 20 features
