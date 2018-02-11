@@ -9,7 +9,7 @@ build = pd.read_csv("datasets/pittdata.csv")
 pred = pred.drop_duplicates(['Address'],keep = "first")
 
 # clean actual fire
-actual = actual[actual["CALL_CREATED_DATE"]>"2017-05-03"]
+actual = actual[actual["CALL_CREATED_DATE"]>"2017-05-30"]
 # correct address format
 actual['incident_type'] = actual['inci_type'].astype(str).str[0]
 actual['street'] = actual['street'].replace(to_replace=', PGH', value='', regex=True)
@@ -28,7 +28,7 @@ actual["full.code"] = actual["full.code"].map(lambda x : x[:x.find("-")-1])
 actual = actual[actual["full.code"].map(lambda x : x[0] != "7")]
 
 # clean inspection violation
-inspec = inspec[inspec["INSPECTION_DATE"] > "2017-05-03"]
+inspec = inspec[inspec["INSPECTION_DATE"] > "2017-05-30"]
 inspec['STREET_NAME'] = inspec['STREET_NUM'].apply(str).apply(lambda x : x[:-2]).str.strip() + " " + inspec['STREET_NAME'].str.strip()
 inspec = inspec[["STREET_NAME","INSPECTION_DATE","INSPECTION_RESULT","VIOLATION"]]
 
@@ -82,8 +82,12 @@ del all["street"]
 del all["STREET_NAME"]
 del all["PROPERTYADDRESS"]
 
+# filter out commercial buildings
+
+
 
 
 #test = pd.merge(pred,actual,how="left",left_on="Address",right_on="street")
 #1 ALLEGHENY AVE
 #TODO: merge inspec shouldn't be to the left (or any of them)
+# 0, 0.3, 0.7, 1
