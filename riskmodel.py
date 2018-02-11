@@ -483,18 +483,16 @@ y_valtrain = np.reshape(fireVarTrain.fillna(method="ffill").values, [fireVarTrai
 #The XG Boost model
 #Grid Search was taking too long a time to run hence did hyperparameter tuning manually and arrived
 #at the below parameters fiving the most optimal result
+
 model = XGBClassifier(learning_rate =0.13,
-       n_estimators=1500,
-       max_depth=3, #5,
-       min_child_weight=1,
-       gamma=1.5, #0,
-       subsample=1.0, #0.8,
-       colsample_bytree=0.6, #0.8,
-       objective= 'binary:logistic',
-       nthread=4,
-       silent=False,
-       scale_pos_weight=1,
-       seed=0)
+        n_estimators=1500,
+        max_depth=5,min_child_weight=1,
+        gamma=0,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        objective= 'binary:logistic',
+        nthread=4,
+        seed=27)
 model.fit(X_train, y_train)
 pred = model.predict(X_validation)
 real = y_validation
@@ -624,7 +622,28 @@ print 'AUC Score = ', metrics.auc(fpr, tpr)
 print 'recall = ',tpr[1]
 print 'precision = ',float(cm[1][1])/(cm[1][1]+cm[0][1])
 
+
+print "Logistic Regression"
+samples = np.array([0.1 if i == 0 else 1.2 for i in y_train])
+model = linear_model.LogisticRegression(C=1e5)
+model.fit(X_train, y_train,sample_weight = samples)
+pred = model.predict(X_validation)
+real = y_validation
+cm = confusion_matrix(real, pred)
+print confusion_matrix(real, pred)
+
+from sklearn.metrics import cohen_kappa_score
+kappa = cohen_kappa_score(real, pred)
+
+fpr, tpr, thresholds = metrics.roc_curve(y_validation, pred, pos_label=1)
+
+print 'Accuracy = ', float(cm[0][0] + cm[1][1])/len(real)
+print 'kappa score = ', kappa
+print 'AUC Score = ', metrics.auc(fpr, tpr)
+print 'recall = ',tpr[1]
+print 'precision = ',float(cm[1][1])/(cm[1][1]+cm[0][1])
 """
+
 print "Start Feature Selection"
 # ==== Feature Selection using Feature Importance =====
 from sklearn.feature_selection import SelectFromModel
@@ -697,14 +716,15 @@ for i in range(feature_importance.size-thresh_num, feature_importance.size-2):
     feature_result.loc[i] = [feature_importance.index[i], feature_importance[i], acc, kappa, auc, recall, precis]
 
 #find the best recall
-max_recall = feature_result['Recall'].idxmax()
-best_row = feature_result.loc[feature_result['Recall'].idxmax()]
+feature_result['F1'] = 2* (feature_result['Recall']*feature_result['Precision']) / (feature_result['Recall']+feature_result['Precision'])
+max_f1 = feature_result['F1'].idxmax()
+best_row = feature_result.loc[feature_result['F1'].idxmax()]
 print "best row:"
 print best_row
 
 feature_result.to_csv("Feature_Selection_Results{0}.csv".format(datetime.datetime.now()))
 
-thres = feature_result.loc[feature_result['Recall'] == max_recall]
+thres = feature_result.loc[feature_result['F1'] == max_f1]
 
 #test on the test data
 
