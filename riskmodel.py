@@ -559,7 +559,7 @@ Results.to_csv(os.path.join(dataset_path, "Results.csv"))
 # Writing results to a log file
 Results.to_csv('{0}Results_{1}.csv'.format(log_path, datetime.datetime.now()))
 
-"""
+
 #Plotting the ROC curve
 plt.title('Receiver Operating Characteristic')
 plt.plot(fpr[1:], tpr[1:], 'b',
@@ -624,28 +624,7 @@ print 'AUC Score = ', metrics.auc(fpr, tpr)
 print 'recall = ',tpr[1]
 print 'precision = ',float(cm[1][1])/(cm[1][1]+cm[0][1])
 
-print "SVM Linear"
-from sklearn import svm
-
-model = svm.SVC(kernel='linear', C = 1.0)
-
-model.fit(X_train, y_train)
-pred = model.predict(X_validation)
-real = y_validation
-cm = confusion_matrix(real, pred)
-print confusion_matrix(real, pred)
-
-from sklearn.metrics import cohen_kappa_score
-kappa = cohen_kappa_score(real, pred)
-
-fpr, tpr, thresholds = metrics.roc_curve(y_validation, pred, pos_label=1)
-
-print 'Accuracy = ', float(cm[0][0] + cm[1][1])/len(real)
-print 'kappa score = ', kappa
-print 'AUC Score = ', metrics.auc(fpr, tpr)
-print 'recall = ',tpr[1]
-
-
+"""
 print "Start Feature Selection"
 # ==== Feature Selection using Feature Importance =====
 from sklearn.feature_selection import SelectFromModel
@@ -680,12 +659,14 @@ thresh_num = 300
 
 feature_result = pd.DataFrame(columns=('Last_Feature', 'Thresh', 'Acc', 'Kapp', 'AUC', 'Recall', 'Precis'))
 low_thresh = feature_importance[0]
+print feature_importance[0]
 for i in range(feature_importance.size-thresh_num, feature_importance.size-2):
     # select features using threshold
     if feature_importance[i] == low_thresh:
-        break
+        continue
     else:
         low_thresh = feature_importance[i]
+        print feature_importance[i]
     selection = SelectFromModel(model, threshold=feature_importance[i], prefit=True)
     select_X_train = selection.transform(X_valtrain)
 
