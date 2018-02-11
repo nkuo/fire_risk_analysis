@@ -697,18 +697,19 @@ for i in range(feature_importance.size-thresh_num, feature_importance.size-2):
     feature_result.loc[i] = [feature_importance.index[i], feature_importance[i], acc, kappa, auc, recall, precis]
 
 #find the best recall
+max_recall = feature_result['Recall'].idxmax()
 best_row = feature_result.loc[feature_result['Recall'].idxmax()]
 print "best row:"
 print best_row
 
 feature_result.to_csv("Feature_Selection_Results{0}.csv".format(datetime.datetime.now()))
 
-thres = [0, 4.85E-05,0.000679513]
+thres = feature_result.loc[feature_result['Recall'] == max_recall]
 
 #test on the test data
 
-for i in range(len(thres)):
-    selection = SelectFromModel(model, threshold=thres[i], prefit=True)
+for i in range(thres.shape[0]):
+    selection = SelectFromModel(model, threshold=thres.loc[i][5], prefit=True)
     select_X_train = selection.transform(X_valtrain)
     selection_model.fit(select_X_train, y_valtrain)
     select_X_test = selection.transform(impute_X_test)
@@ -726,7 +727,7 @@ for i in range(len(thres)):
     precis = float(cm[1][1]) / (cm[1][1] + cm[0][1])
 
     print 'Final Test Data Results'
-    print("Thresh=00121826, n=%d" % (select_X_test.shape[1]))
+    print("Thresh=%d, n=%d" % (thres.loc[i][1], select_X_test.shape[1]))
     print 'Accuracy = {0} \n \n'.format(acc)
     print 'kappa score = {0} \n \n'.format(kappa)
     print 'AUC Score = {0} \n \n'.format(auc)
@@ -736,13 +737,8 @@ for i in range(len(thres)):
 
 #Tree model for getting features importance
 clf = ExtraTreesClassifier()
-imputed_fireVarTrain = fireVarTrain.fillna(method="ffill")
-imputed_encoded_traindata = encoded_traindata.drop(['fire']).fillna(method="ffill")
 
-impute_X = np.array(imputed_encoded_traindata)
-impute_y = np.reshape(imputed_fireVarTrain.values,[imputed_fireVarTrain.shape[0],])
-
-clf = clf.fit(impute_X, impute_y)
+clf = clf.fit(X_train, y_train)
 
 
 UsedDf = encoded_traindata.drop(['fire'])
