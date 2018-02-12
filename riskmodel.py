@@ -715,14 +715,15 @@ for i in range(feature_importance.size-thresh_num, feature_importance.size-2):
 
     feature_result.loc[i] = [feature_importance.index[i], feature_importance[i], acc, kappa, auc, recall, precis]
 
+feature_result.to_csv("Feature_Selection_Results{0}.csv".format(datetime.datetime.now()))
 #find the best recall
-feature_result['F1'] = 2* (feature_result['Recall']*feature_result['Precision']) / (feature_result['Recall']+feature_result['Precision'])
+feature_result['F1'] = 2* (feature_result['Recall']*feature_result['Precis']) / (feature_result['Recall']+feature_result['Precis'])
 max_f1 = feature_result['F1'].idxmax()
 best_row = feature_result.loc[feature_result['F1'].idxmax()]
 print "best row:"
 print best_row
 
-feature_result.to_csv("Feature_Selection_Results{0}.csv".format(datetime.datetime.now()))
+
 
 thres = feature_result.loc[feature_result['F1'] == max_f1]
 
