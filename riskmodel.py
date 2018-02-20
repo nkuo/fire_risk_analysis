@@ -24,7 +24,6 @@ from sklearn.preprocessing import scale
 import pandas as pd
 from sklearn import datasets, linear_model, cross_validation, grid_search
 import numpy as np
-np.set_printoptions(threshold='nan')
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestClassifier
@@ -326,11 +325,12 @@ ohe10 = pd.get_dummies(combined_df['INSPECTION_RESULT'])
 combined_df1 = pd.concat([combined_df[['PROPERTYADDRESS','PROPERTYHOUSENUM','CALL_CREATED_DATE','fire','fire_year']],ohe8,ohe9,ohe10], axis=1)
 
 #PREPARING THE TESTING DATA (final 6 months of data)
-cutoff = datetime.datetime.now() - relativedelta(months=6)
+cutoff = datetime.datetime.strptime("2/2/18", '%m/%d/%y') - relativedelta(months=12)
 cutoffdate = cutoff.strftime("%m/%d/%Y")
 
 testdata = combined_df1[combined_df1.CALL_CREATED_DATE > cutoffdate]
-testdata2 = testdata.groupby( [ "PROPERTYHOUSENUM", "PROPERTYADDRESS",'CALL_CREATED_DATE','fire_year'] ).sum().reset_index()
+testdata1 = testdata[testdata.CALL_CREATED_DATE < datetime.datetime.strptime("2/2/18", '%m/%d/%y').strftime("%m/%d/%Y")]
+testdata2 = testdata1.groupby( [ "PROPERTYHOUSENUM", "PROPERTYADDRESS",'CALL_CREATED_DATE','fire_year'] ).sum().reset_index()
 del testdata['CALL_CREATED_DATE']
 del testdata['fire_year']
 #testdata2 = testdata.groupby( [ "PROPERTYHOUSENUM", "PROPERTYADDRESS"] ).sum().reset_index() #,'CALL_CREATED_DATE','fire_year'
@@ -390,6 +390,11 @@ validation_data.loc[validation_data.fire != 0, 'fire'] = 1
 
 nofire_validation = pd.concat([pcafinal[["PROPERTYHOUSENUM","PROPERTYADDRESS"]], validation_data[["PROPERTYHOUSENUM","PROPERTYADDRESS"]],validation_data[["PROPERTYHOUSENUM","PROPERTYADDRESS"]]]).drop_duplicates(keep=False)
 
+all_validation = validation_data.append(nofire_validation, ignore_index=True)
+all_validation.fillna(0)
+all_validation = pd.merge(validation_data, pcafinal, on = ["PROPERTYHOUSENUM", "PROPERTYADDRESS"], how = "left")
+del all_validation['fire']
+
 validation_data = validation_data.append(nofire_validation, ignore_index=True)
 validation_data.fillna(0)
 validation_data = pd.merge(validation_data, pcafinal, on = ["PROPERTYHOUSENUM", "PROPERTYADDRESS"], how = "left")
@@ -404,11 +409,23 @@ ohe5 = pd.get_dummies(validation_data['NEIGHCODE'])
 ohe6 = pd.get_dummies(validation_data['TAXDESC'])
 ohe7 = pd.get_dummies(validation_data['USEDESC'])
 
+state_desc = validation_data['CLASSDESC']
+school_desc= validation_data['SCHOOLDESC']
+owner_desc= validation_data['OWNERDESC']
+muni_desc= validation_data['MUNIDESC']
+neigh_desc= validation_data['NEIGHCODE']
+tax_desc= validation_data['TAXDESC']
+use_desc= validation_data['USEDESC']
+address= validation_data['PROPERTYADDRESS']
+housenum= validation_data['PROPERTYHOUSENUM']
+
+
 for col in ohe_del:
     del validation_data[col]
 
+
+
 encoded_validationdata = pd.concat([validation_data, ohe1, ohe2, ohe3, ohe4, ohe5, ohe6, ohe7], axis=1)
-encoded_validationdata.to_csv("encoded_validation.csv")
 
 print "size of encoded validation dataframe "
 print encoded_validationdata.shape
@@ -416,7 +433,7 @@ print encoded_validationdata.shape
 #PREPARING THE TRAINING DATA
 
 #Everything till final 6-month period is training data
-traindata1 = combined_df1[combined_df1.CALL_CREATED_DATE <= cutoffdate_val]
+traindata1 = combined_df1[combined_df1.CALL_CREATED_DATE <= cutoffdate]
 
 #Combining multiple instances of an address together
 traindata = traindata1.groupby( [ "PROPERTYHOUSENUM", "PROPERTYADDRESS",'CALL_CREATED_DATE','fire_year'] ).sum().reset_index()
@@ -485,24 +502,26 @@ y_valtrain = np.reshape(fireVarTrain.fillna(method="ffill").values, [fireVarTrai
 #at the below parameters fiving the most optimal result
 
 model = XGBClassifier(learning_rate =0.13,
-        n_estimators=1500,
-        max_depth=5,min_child_weight=1,
-        gamma=0,
-        subsample=0.8,
-        colsample_bytree=0.8,
-        objective= 'binary:logistic',
-        nthread=4,
-        seed=27)
+       n_estimators=1500,
+       max_depth=3#5,
+       ,min_child_weight=1,
+       gamma= 0.6,
+       subsample=1,#0.8,
+       colsample_bytree=0.6,
+       objective= 'binary:logistic',
+       nthread=4, silent = False,
+       seed=27)
+
 model.fit(X_train, y_train)
-pred = model.predict(X_validation)
-real = y_validation
+pred = model.predict(X_test)
+real = y_test
 cm = confusion_matrix(real, pred)
 print confusion_matrix(real, pred)
 
 from sklearn.metrics import cohen_kappa_score
 kappa = cohen_kappa_score(real, pred)
 
-fpr, tpr, thresholds = metrics.roc_curve(y_validation, pred, pos_label=1)
+fpr, tpr, thresholds = metrics.roc_curve(y_test, pred, pos_label=1)
 roc_auc = metrics.auc(fpr, tpr)
 
 acc = 'Accuracy = {0} \n \n'.format(float(cm[0][0] + cm[1][1])/len(real))
@@ -531,8 +550,29 @@ with open('{0}ModelPerformance_{1}.txt'.format(log_path, datetime.datetime.now()
     log_file.write(recall)
     log_file.write(precis)
 
+SystemExit()
 
-"""
+png_path = os.path.join(curr_path, "images/")
+important_features = pd.Series(data=model.feature_importances_,index=encoded_traindata.columns)
+important_features.sort_values(ascending=False,inplace=True)
+#top 20 features
+print important_features[0:20]
+
+#Plotting the top 20 features
+y_pos = np.arange(len(important_features.index[0:20]))
+
+plt.bar(y_pos,important_features.values[0:20], alpha=0.3)
+plt.xticks(y_pos, important_features.index[0:20], rotation = (90), fontsize = 11, ha='left')
+plt.ylabel('Feature Importance Scores')
+plt.title('Feature Importance')
+
+
+features_png = "{0}FeatureImportancePlot_XGBoost{1}.png".format(png_path, datetime.datetime.now())
+plt.savefig(features_png, dpi=150)
+plt.clf()
+
+important_features[0:50].to_csv('{0}FeatureImportanceList_{1}.csv'.format(log_path, datetime.datetime.now()))
+
 #Getting the probability scores
 predictions = model.predict_proba(X_validation)
 #print predictions
@@ -545,10 +585,11 @@ risk = []
 for row in predictions:
     risk.append(row[1])
 
-cols = {"Address": addresses, "Fire":pred,"RiskScore":risk,"state_desc":state_desc,"school_desc":school_desc,
+cols = {'PROPERTYADDRESS': address,'PROPERTYHOUSENUM': housenum, "Fire":pred,"RiskScore":risk,"state_desc":state_desc,"school_desc":school_desc,
         "owner_desc":owner_desc,"muni_desc":muni_desc,"neigh_desc":neigh_desc,"tax_desc":tax_desc,"use_desc":use_desc}
 
 Results = pd.DataFrame(cols)
+Results = pd.merge(Results, all_validation, on = ["PROPERTYHOUSENUM", "PROPERTYADDRESS"], how = "left")
 
 #Writing results to the updating Results.csv
 Results.to_csv(os.path.join(dataset_path, "Results.csv"))
@@ -576,73 +617,6 @@ roc_png = "{0}ROC_{1}.png".format(png_path, datetime.datetime.now())
 plt.savefig(roc_png, dpi=150)
 plt.clf()   # Clear figure
 
-print "Random Forest Classifier"
-samples = np.array([0.1 if i == 0 else 1.2 for i in y_validation])
-model = RandomForestClassifier(n_estimators=500)
-model.fit(X_train, y_train)
-pred = model.predict(X_validation)
-real = y_validation
-cm = confusion_matrix(real, pred)
-print confusion_matrix(real, pred)
-
-from sklearn.metrics import cohen_kappa_score
-kappa = cohen_kappa_score(real, pred)
-fpr, tpr, thresholds = metrics.roc_curve(y_validation, pred, pos_label=1)
-
-print 'Accuracy = ', float(cm[0][0] + cm[1][1])/len(real)
-print 'kappa score = ', kappa
-print 'AUC Score = ', metrics.auc(fpr, tpr)
-print 'recall = ',tpr[1]
-print 'precision = ',float(cm[1][1])/(cm[1][1]+cm[0][1])
-
-from sklearn.ensemble import AdaBoostClassifier
-from sklearn.tree import DecisionTreeClassifier
-
-print "AdaBoost"
-
-model = AdaBoostClassifier(
-        DecisionTreeClassifier(max_depth=2),
-        n_estimators=600,
-        learning_rate=1.5,
-        algorithm="SAMME")
-model.fit(X_train, y_train)
-pred = model.predict(X_validation)
-real = y_validation
-cm = confusion_matrix(real, pred)
-print confusion_matrix(real, pred)
-
-from sklearn.metrics import cohen_kappa_score
-kappa = cohen_kappa_score(real, pred)
-
-fpr, tpr, thresholds = metrics.roc_curve(y_validation, pred, pos_label=1)
-
-print 'Accuracy = ', float(cm[0][0] + cm[1][1])/len(real)
-print 'kappa score = ', kappa
-print 'AUC Score = ', metrics.auc(fpr, tpr)
-print 'recall = ',tpr[1]
-print 'precision = ',float(cm[1][1])/(cm[1][1]+cm[0][1])
-
-
-print "Logistic Regression"
-samples = np.array([0.1 if i == 0 else 1.2 for i in y_train])
-model = linear_model.LogisticRegression(C=1e5)
-model.fit(X_train, y_train,sample_weight = samples)
-pred = model.predict(X_validation)
-real = y_validation
-cm = confusion_matrix(real, pred)
-print confusion_matrix(real, pred)
-
-from sklearn.metrics import cohen_kappa_score
-kappa = cohen_kappa_score(real, pred)
-
-fpr, tpr, thresholds = metrics.roc_curve(y_validation, pred, pos_label=1)
-
-print 'Accuracy = ', float(cm[0][0] + cm[1][1])/len(real)
-print 'kappa score = ', kappa
-print 'AUC Score = ', metrics.auc(fpr, tpr)
-print 'recall = ',tpr[1]
-print 'precision = ',float(cm[1][1])/(cm[1][1]+cm[0][1])
-"""
 
 print "Start Feature Selection"
 # ==== Feature Selection using Feature Importance =====
@@ -723,9 +697,9 @@ best_row = feature_result.loc[feature_result['F1'].idxmax()]
 print "best row:"
 print best_row
 
+thres = pd.read_csv("FS_Latest.csv")
 
-
-thres = feature_result.loc[feature_result['F1'] == max_f1]
+thres = thres.loc[thres['F1'] == best_row[7]]
 
 #test on the test data
 
@@ -756,33 +730,27 @@ for i in range(thres.shape[0]):
     print 'precision = {0} \n \n'.format(precis)
 
 
-#Tree model for getting features importance
-clf = ExtraTreesClassifier()
+selection = SelectFromModel(model, threshold=0.000148397, prefit=True)
+select_X_train = selection.transform(X_valtrain)
+selection_model.fit(select_X_train, y_valtrain)
+select_X_test = selection.transform(impute_X_test)
+y_pred = selection_model.predict(select_X_test)
+predictions = [round(value) for value in y_pred]
+fpr, tpr, thresholds = metrics.roc_curve(impute_y_test, predictions, pos_label=1)
+accuracy = accuracy_score(impute_y_test, predictions)
+cm = confusion_matrix(impute_y_test, predictions)
+print confusion_matrix(impute_y_test, predictions)
 
-clf = clf.fit(X_train, y_train)
+kappa = cohen_kappa_score(impute_y_test, predictions)
+acc = float(cm[0][0] + cm[1][1]) / len(impute_y_test)
+auc = metrics.auc(fpr, tpr)
+recall = tpr[1]
+precis = float(cm[1][1]) / (cm[1][1] + cm[0][1])
 
-
-UsedDf = encoded_traindata.drop(['fire'])
-important_features = pd.Series(data=clf.feature_importances_,index=UsedDf.columns)
-important_features.sort_values(ascending=False,inplace=True)
-#top 20 features
-print important_features[0:20]
-
-#Plotting the top 20 features
-y_pos = np.arange(len(important_features.index[0:20]))
-
-plt.bar(y_pos,important_features.values[0:20], alpha=0.3)
-plt.xticks(y_pos, important_features.index[0:20], rotation = (90), fontsize = 11, ha='left')
-plt.ylabel('Feature Importance Scores')
-plt.title('Feature Importance')
-
-
-#features_png = "{0}FeatureImportancePlot_{1}.png".format(png_path, datetime.datetime.now())
-#plt.savefig(features_png, dpi=150)
-#plt.clf()
-
-important_features[0:50].to_csv('{0}FeatureImportanceList_{1}.csv'.format(log_path, datetime.datetime.now()))
-
-
-
-#plt.show()
+print 'Final Test Data Results'
+print("Thresh=%d, n=%d" % (.000148397, select_X_test.shape[1]))
+print 'Accuracy = {0} \n \n'.format(acc)
+print 'kappa score = {0} \n \n'.format(kappa)
+print 'AUC Score = {0} \n \n'.format(auc)
+print 'recall = {0} \n \n'.format(recall)
+print 'precision = {0} \n \n'.format(precis)
