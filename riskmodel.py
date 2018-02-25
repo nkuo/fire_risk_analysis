@@ -325,12 +325,12 @@ ohe10 = pd.get_dummies(combined_df['INSPECTION_RESULT'])
 combined_df1 = pd.concat([combined_df[['PROPERTYADDRESS','PROPERTYHOUSENUM','CALL_CREATED_DATE','fire','fire_year']],ohe8,ohe9,ohe10], axis=1)
 
 #PREPARING THE TESTING DATA (final 6 months of data)
-cutoff = datetime.datetime.strptime("2/2/18", '%m/%d/%y') - relativedelta(months=12)
+cutoff = datetime.datetime.now() - relativedelta(months=6)
 cutoffdate = cutoff.strftime("%m/%d/%Y")
 
 testdata = combined_df1[combined_df1.CALL_CREATED_DATE > cutoffdate]
-testdata1 = testdata[testdata.CALL_CREATED_DATE < datetime.datetime.strptime("2/2/18", '%m/%d/%y').strftime("%m/%d/%Y")]
-testdata2 = testdata1.groupby( [ "PROPERTYHOUSENUM", "PROPERTYADDRESS",'CALL_CREATED_DATE','fire_year'] ).sum().reset_index()
+#testdata1 = testdata[testdata.CALL_CREATED_DATE < datetime.datetime.strptime("2/2/18", '%m/%d/%y').strftime("%m/%d/%Y")]
+testdata2 = testdata.groupby( [ "PROPERTYHOUSENUM", "PROPERTYADDRESS",'CALL_CREATED_DATE','fire_year'] ).sum().reset_index()
 del testdata['CALL_CREATED_DATE']
 del testdata['fire_year']
 #testdata2 = testdata.groupby( [ "PROPERTYHOUSENUM", "PROPERTYADDRESS"] ).sum().reset_index() #,'CALL_CREATED_DATE','fire_year'
@@ -382,7 +382,7 @@ encoded_testdata.to_csv("encoded_testdata.csv")
 cutoff_val = datetime.datetime.now() - relativedelta(months=12)
 cutoffdate_val = cutoff_val.strftime("%m/%d/%Y")
 
-validation_data1 = combined_df1[combined_df1.CALL_CREATED_DATE >= cutoffdate_val]
+validation_data1 = combined_df1[combined_df1.CALL_CREATED_DATE > cutoffdate_val]
 validation_data2 = validation_data1[validation_data1.CALL_CREATED_DATE <= cutoffdate]
 
 validation_data = validation_data2.groupby([ "PROPERTYHOUSENUM", "PROPERTYADDRESS",'CALL_CREATED_DATE','fire_year'] ).sum().reset_index()
@@ -433,7 +433,7 @@ print encoded_validationdata.shape
 #PREPARING THE TRAINING DATA
 
 #Everything till final 6-month period is training data
-traindata1 = combined_df1[combined_df1.CALL_CREATED_DATE <= cutoffdate]
+traindata1 = combined_df1[combined_df1.CALL_CREATED_DATE <= cutoffdate_val]
 
 #Combining multiple instances of an address together
 traindata = traindata1.groupby( [ "PROPERTYHOUSENUM", "PROPERTYADDRESS",'CALL_CREATED_DATE','fire_year'] ).sum().reset_index()
